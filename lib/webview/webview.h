@@ -687,6 +687,12 @@ namespace webview {
             std::wstring browserExecutableFolder = (lenWebView > 0)
                 ? envWebView
                 : L"C:\\dlcv\\bin\\webview\\Microsoft.WebView2.FixedVersionRuntime.148.0.3967.96.x64";
+            // 检查固定版本 WebView2 是否存在，不存在则回退到系统默认
+            char msedgeCheck[MAX_PATH];
+            snprintf(msedgeCheck, MAX_PATH, "%ls\\msedgewebview2.exe", browserExecutableFolder.c_str());
+            if (GetFileAttributesA(msedgeCheck) == INVALID_FILE_ATTRIBUTES) {
+                browserExecutableFolder.clear();
+            }
 
             // 读取 DLCV_WEBVIEW_USERDATA 环境变量，未设置则使用默认值
             wchar_t envUserData[32767];
@@ -694,10 +700,18 @@ namespace webview {
             std::wstring userDataFolder = (lenUserData > 0)
                 ? envUserData
                 : L"C:\\dlcv\\bin\\webview\\userdata";
-            std::filesystem::create_directories(userDataFolder);
+            // 检查 userdata 路径是否存在，不存在则回退到 APPDATA 默认路径
+            if (GetFileAttributesW(userDataFolder.c_str()) == INVALID_FILE_ATTRIBUTES) {
+                const wchar_t* appdata = _wgetenv(L"APPDATA");
+                char currentExePath[MAX_PATH];
+                GetModuleFileNameA(NULL, currentExePath, MAX_PATH);
+                char* currentExeName = PathFindFileNameA(currentExePath);
+                std::wstring currentExeNameW = wideCharConverter.from_bytes(currentExeName);
+                userDataFolder = std::wstring(appdata) + L"/" + currentExeNameW;
+            }
 
             HRESULT res = CreateCoreWebView2EnvironmentWithOptions(
-                browserExecutableFolder.c_str(),
+                browserExecutableFolder.empty() ? nullptr : browserExecutableFolder.c_str(),
                 userDataFolder.c_str(),
                 nullptr,
                 new webview2_com_handler(wnd, [&](ICoreWebView2Controller* controller) {
