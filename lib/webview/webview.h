@@ -678,8 +678,20 @@ namespace webview {
             std::atomic_flag flag = ATOMIC_FLAG_INIT;
             flag.test_and_set();
 
+            char currentExePath[MAX_PATH];
+            GetModuleFileNameA(NULL, currentExePath, MAX_PATH);
+            char* currentExeName = PathFindFileNameA(currentExePath);
+
             std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> wideCharConverter;
+            // std::wstring userDataFolder =
+            // wideCharConverter.from_bytes(std::getenv("APPDATA"));
+            // userDataFolder 会有中文，导致无法启动
+            // 设置本地环境以支持中文字符
             std::setlocale(LC_ALL, "");
+            // 直接使用 _wgetenv 获取 APPDATA 环境变量
+            const wchar_t* appdata = _wgetenv(L"APPDATA");
+            std::wstring userDataFolder = appdata;
+            std::wstring currentExeNameW = wideCharConverter.from_bytes(currentExeName);
 
             // 读取 DLCV_WEBVIEW 环境变量，未设置则使用默认值
             wchar_t envWebView[32767];
@@ -696,7 +708,7 @@ namespace webview {
 
             HRESULT res = CreateCoreWebView2EnvironmentWithOptions(
                 browserExecutableFolder.empty() ? nullptr : browserExecutableFolder.c_str(),
-                nullptr,
+                (userDataFolder + L"/" + currentExeNameW).c_str(),
                 nullptr,
                 new webview2_com_handler(wnd, [&](ICoreWebView2Controller* controller) {
                     m_controller = controller;
