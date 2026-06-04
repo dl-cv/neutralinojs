@@ -51,6 +51,7 @@
 #endif
 
 #include <atomic>
+#include <filesystem>
 #include <functional>
 #include <future>
 #include <map>
@@ -677,24 +678,27 @@ namespace webview {
             std::atomic_flag flag = ATOMIC_FLAG_INIT;
             flag.test_and_set();
 
-            char currentExePath[MAX_PATH];
-            GetModuleFileNameA(NULL, currentExePath, MAX_PATH);
-            char* currentExeName = PathFindFileNameA(currentExePath);
-
             std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> wideCharConverter;
-            // std::wstring userDataFolder =
-            // wideCharConverter.from_bytes(std::getenv("APPDATA"));
-            // userDataFolder 会有中文，导致无法启动
-            // 设置本地环境以支持中文字符
             std::setlocale(LC_ALL, "");
-            // 直接使用 _wgetenv 获取 APPDATA 环境变量
-            const wchar_t* appdata = _wgetenv(L"APPDATA");
-            std::wstring userDataFolder = appdata;
-            std::wstring currentExeNameW = wideCharConverter.from_bytes(currentExeName);
+
+            // 读取 DLCV_WEBVIEW 环境变量，未设置则使用默认值
+            wchar_t envWebView[32767];
+            DWORD lenWebView = GetEnvironmentVariableW(L"DLCV_WEBVIEW", envWebView, 32767);
+            std::wstring browserExecutableFolder = (lenWebView > 0)
+                ? envWebView
+                : L"C:\\dlcv\\bin\\webview\\Microsoft.WebView2.FixedVersionRuntime.148.0.3967.96.x64";
+
+            // 读取 DLCV_WEBVIEW_USERDATA 环境变量，未设置则使用默认值
+            wchar_t envUserData[32767];
+            DWORD lenUserData = GetEnvironmentVariableW(L"DLCV_WEBVIEW_USERDATA", envUserData, 32767);
+            std::wstring userDataFolder = (lenUserData > 0)
+                ? envUserData
+                : L"C:\\dlcv\\bin\\webview\\userdata";
+            std::filesystem::create_directories(userDataFolder);
 
             HRESULT res = CreateCoreWebView2EnvironmentWithOptions(
-                nullptr,
-                (userDataFolder + L"/" + currentExeNameW).c_str(),
+                browserExecutableFolder.c_str(),
+                userDataFolder.c_str(),
                 nullptr,
                 new webview2_com_handler(wnd, [&](ICoreWebView2Controller* controller) {
                     m_controller = controller;
