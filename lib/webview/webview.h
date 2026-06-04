@@ -694,25 +694,9 @@ namespace webview {
                 browserExecutableFolder.clear();
             }
 
-            // 读取 DLCV_WEBVIEW_USERDATA 环境变量，未设置则使用默认值
-            wchar_t envUserData[32767];
-            DWORD lenUserData = GetEnvironmentVariableW(L"DLCV_WEBVIEW_USERDATA", envUserData, 32767);
-            std::wstring userDataFolder = (lenUserData > 0)
-                ? envUserData
-                : L"C:\\dlcv\\bin\\webview\\userdata";
-            // 检查 userdata 路径是否存在，不存在则回退到 APPDATA 默认路径
-            if (GetFileAttributesW(userDataFolder.c_str()) == INVALID_FILE_ATTRIBUTES) {
-                const wchar_t* appdata = _wgetenv(L"APPDATA");
-                char currentExePath[MAX_PATH];
-                GetModuleFileNameA(NULL, currentExePath, MAX_PATH);
-                char* currentExeName = PathFindFileNameA(currentExePath);
-                std::wstring currentExeNameW = wideCharConverter.from_bytes(currentExeName);
-                userDataFolder = std::wstring(appdata) + L"/" + currentExeNameW;
-            }
-
             HRESULT res = CreateCoreWebView2EnvironmentWithOptions(
                 browserExecutableFolder.empty() ? nullptr : browserExecutableFolder.c_str(),
-                userDataFolder.c_str(),
+                nullptr,
                 nullptr,
                 new webview2_com_handler(wnd, [&](ICoreWebView2Controller* controller) {
                     m_controller = controller;
