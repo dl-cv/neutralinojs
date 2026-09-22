@@ -95,3 +95,10 @@ If you like to support our work, you can donate to Neutralinojs via [Patreon](ht
 
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fneutralinojs%2Fneutralinojs.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fneutralinojs%2Fneutralinojs?ref=badge_large)
 
+
+
+## Windows 无地址栏弹窗
+
+Windows WebView2 支持通过 `window.open("", "neutralino-popup:editor", "width=1000,height=700")` 创建无地址栏的空白弹窗。仅名称以 `neutralino-popup:` 开头且地址为 `about:blank` 的请求使用该行为；其他请求仍交由 WebView2 默认处理。
+
+弹窗使用系统标题栏，与主窗口处于同一进程，保留浏览器 `Window` 引用、同源文档访问、页面标题及 `window.close()` 行为。弹窗不额外初始化 Neutralino 原生 API，也不创建业务后端通信。通过根目录 `编译.bat` 构建 Windows 运行时。

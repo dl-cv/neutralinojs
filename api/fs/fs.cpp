@@ -15,7 +15,6 @@
 #elif defined(_WIN32)
 #define _WINSOCKAPI_
 #include <windows.h>
-#include <atlstr.h>
 #include <shlwapi.h>
 #include <winbase.h>
 
