@@ -1,0 +1,27 @@
+
+1 VERSIONINFO
+FILEVERSION 2026,9,23,0
+PRODUCTVERSION 2026,9,23,0
+FILEOS 0x4
+FILETYPE 0x1
+{
+	BLOCK "StringFileInfo"
+	{
+		BLOCK "000004B0"
+		{
+			VALUE "ProductName", "深度视觉 AI Studio"
+			VALUE "FileDescription", "深度视觉 AI Studio"
+			VALUE "LegalCopyright", "深圳市深度视觉科技有限公司"
+			VALUE "LegalTrademarks", "深圳市深度视觉科技有限公司"
+			VALUE "ProductVersion", "2026.9.23.0"
+			VALUE "FileVersion", "2026.9.23.0"
+			VALUE "OriginalFilename", "DLCV AI Studio-win_x64.exe"
+			VALUE "InternalName", "DLCV AI Studio-win_x64"
+		}
+	}
+
+	BLOCK "VarFileInfo"
+	{
+		VALUE "Translation", 0x0000 0x04B0
+	}
+}
