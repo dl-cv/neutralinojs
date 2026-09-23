@@ -594,6 +594,7 @@ namespace webview {
 
 // Edge/Chromium headers and libs
 #include "webview2.h"
+#include "popup_window.h"
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "oleaut32.lib")
 
@@ -619,9 +620,9 @@ namespace webview {
     // EdgeHTML browser engine
     //
     using namespace winrt;
-    using namespace Windows::Foundation;
-    using namespace Windows::Web::UI;
-    using namespace Windows::Web::UI::Interop;
+    using namespace winrt::Windows::Foundation;
+    using namespace winrt::Windows::Web::UI;
+    using namespace winrt::Windows::Web::UI::Interop;
 
     class edge_html : public browser {
     public:
@@ -807,6 +808,7 @@ namespace webview {
             }
             HRESULT STDMETHODCALLTYPE Invoke(HRESULT res,
                 ICoreWebView2Environment* env) {
+                m_environment = env;
                 env->CreateCoreWebView2Controller(m_window, this);
                 return S_OK;
             }
@@ -817,6 +819,7 @@ namespace webview {
                 ICoreWebView2* webview;
                 ::EventRegistrationToken token;
                 controller->get_CoreWebView2(&webview);
+                popup_window::attach(webview, m_environment.Get(), m_window);
                 webview->add_WebMessageReceived(this, &token);
                 webview->add_PermissionRequested(this, &token);
 
@@ -849,6 +852,7 @@ namespace webview {
         private:
             HWND m_window;
             webview2_com_handler_cb_t m_cb;
+            Microsoft::WRL::ComPtr<ICoreWebView2Environment> m_environment;
         };
     };
 

@@ -9,19 +9,19 @@ FILETYPE 0x1
 	{
 		BLOCK "000004B0"
 		{
-			VALUE "ProductName", "AI平台"
-			VALUE "FileDescription", "AI平台"
+			VALUE "ProductName", "AI平台2.0"
+			VALUE "FileDescription", "AI平台2.0"
 			VALUE "LegalCopyright", "深度视觉（广东）人工智能研究有限公司"
 			VALUE "LegalTrademarks", "深度视觉（广东）人工智能研究有限公司"
 			VALUE "ProductVersion", "2026.9.23.0"
 			VALUE "FileVersion", "2026.9.23.0"
-			VALUE "OriginalFilename", "DLCV AI Platform-win_x64.exe"
-			VALUE "InternalName", "DLCV AI Platform-win_x64"
+			VALUE "OriginalFilename", "DLCV AI Studio-win_x64.exe"
+			VALUE "InternalName", "DLCV AI Studio-win_x64"
 		}
 	}
 
 	BLOCK "VarFileInfo"
 	{
-		VALUE "Translation", 0x0000 0x04B0  
+		VALUE "Translation", 0x0000 0x04B0
 	}
 }
