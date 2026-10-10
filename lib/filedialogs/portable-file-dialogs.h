@@ -304,6 +304,9 @@ protected:
     static int CALLBACK bffcallback(HWND hwnd, UINT uMsg, LPARAM, LPARAM pData);
 #if PFD_HAS_IFILEDIALOG
     std::string select_folder_vista(IFileDialog *ifd, bool force_path);
+    std::string select_save_vista(std::wstring const &directory,
+                                 std::wstring const &filename,
+                                 std::wstring const &filters, opt options);
 #endif
 
     std::wstring m_wtitle;
@@ -1061,8 +1064,15 @@ inline internal::file_dialog::file_dialog(type in_type,
                 winitial_dir = m_wdefault_path.substr(0, separator + 1);
                 auto parent_attr = GetFileAttributesW(winitial_dir.c_str());
                 if (parent_attr != INVALID_FILE_ATTRIBUTES && (parent_attr & FILE_ATTRIBUTE_DIRECTORY))
-                    // Windows 会优先使用历史目录，保存新文件时需显式传入有效父目录。
+                {
+#if PFD_HAS_IFILEDIALOG
+                    // lpstrInitialDir 仍可能使用历史目录，SetFolder 显式选择本次父目录。
+                    if (flags(flag::is_vista))
+                        return select_save_vista(winitial_dir, m_wdefault_path.substr(separator + 1),
+                                                 wfilter_list, options);
+#endif
                     ofn.lpstrInitialDir = winitial_dir.c_str();
+                }
             }
 
             if (!(options & opt::force_overwrite))
@@ -1278,6 +1288,69 @@ inline int CALLBACK internal::file_dialog::bffcallback(HWND hwnd, UINT uMsg,
 }
 
 #if PFD_HAS_IFILEDIALOG
+inline std::string internal::file_dialog::select_save_vista(std::wstring const &directory,
+                                                           std::wstring const &filename,
+                                                           std::wstring const &filters, opt options)
+{
+    ole32_dll ole32;
+    IFileSaveDialog *ifd = nullptr;
+    auto hr = dll::proc<HRESULT WINAPI (REFCLSID, LPUNKNOWN, DWORD, REFIID, LPVOID *)>(ole32, "CoCreateInstance")
+                  (CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&ifd));
+    if (FAILED(hr))
+        return "";
+    auto release_dialog = [](IFileSaveDialog *value) { value->Release(); };
+    std::unique_ptr<IFileSaveDialog, decltype(release_dialog)> dialog(ifd, release_dialog);
+
+    dll shell32("shell32.dll");
+    dll::proc<HRESULT WINAPI (PCWSTR, IBindCtx*, REFIID, void**)>
+        create_item(shell32, "SHCreateItemFromParsingName");
+    if (!create_item)
+        return "";
+    IShellItem *folder = nullptr;
+    hr = create_item(directory.c_str(), nullptr, IID_PPV_ARGS(&folder));
+    if (FAILED(hr))
+        return "";
+    hr = ifd->SetFolder(folder);
+    folder->Release();
+    if (FAILED(hr))
+        return "";
+
+    DWORD dialog_options = FOS_FORCEFILESYSTEM | FOS_NOCHANGEDIR;
+    if (!(options & opt::force_overwrite))
+        dialog_options |= FOS_OVERWRITEPROMPT;
+    if (FAILED(ifd->SetOptions(dialog_options)) || FAILED(ifd->SetTitle(m_wtitle.c_str()))
+        || FAILED(ifd->SetFileName(filename.c_str())))
+        return "";
+
+    std::vector<COMDLG_FILTERSPEC> filter_specs;
+    for (auto filter = filters.c_str(); *filter;)
+    {
+        auto name = filter;
+        filter += wcslen(filter) + 1;
+        auto pattern = filter;
+        filter += wcslen(filter) + 1;
+        filter_specs.push_back({ name, pattern });
+    }
+    if (!filter_specs.empty()
+        && FAILED(ifd->SetFileTypes((UINT)filter_specs.size(), filter_specs.data())))
+        return "";
+    if (FAILED(ifd->Show(GetForegroundWindow())))
+        return "";
+
+    IShellItem *item = nullptr;
+    if (FAILED(ifd->GetResult(&item)))
+        return "";
+    wchar_t *wselected = nullptr;
+    hr = item->GetDisplayName(SIGDN_FILESYSPATH, &wselected);
+    item->Release();
+    std::string result;
+    if (SUCCEEDED(hr) && wselected)
+        result = internal::wstr2str(wselected);
+    if (wselected)
+        dll::proc<void WINAPI (LPVOID)>(ole32, "CoTaskMemFree")(wselected);
+    return result;
+}
+
 inline std::string internal::file_dialog::select_folder_vista(IFileDialog *ifd, bool force_path)
 {
     std::string result;

@@ -37,6 +37,22 @@ class WindowsSaveDialogTests(unittest.TestCase):
         self.assertIn("ofn.Flags |= OFN_OVERWRITEPROMPT;", save)
         self.assertEqual(source.count("ofn.lpstrInitialDir = winitial_dir.c_str();"), 1)
 
+    def test_save_forces_folder_before_show(self):
+        source = (ROOT / "lib/filedialogs/portable-file-dialogs.h").read_text(encoding="utf-8")
+        start = source.index("inline std::string internal::file_dialog::select_save_vista(")
+        end = source.index("inline std::string internal::file_dialog::select_folder_vista(", start)
+        save = source[start:end]
+        self.assertIn("CLSID_FileSaveDialog", save)
+        self.assertLess(save.index("ifd->SetFolder(folder)"), save.index("ifd->Show(GetForegroundWindow())"))
+        self.assertNotIn("SetDefaultFolder", save)
+        self.assertIn("ifd->SetFileName(filename.c_str())", save)
+        self.assertIn("ifd->SetFileTypes((UINT)filter_specs.size(), filter_specs.data())", save)
+        self.assertIn("if (!(options & opt::force_overwrite))", save)
+        self.assertIn("dialog_options |= FOS_OVERWRITEPROMPT;", save)
+        self.assertIn("if (FAILED(ifd->Show(GetForegroundWindow())))\n        return \"\";", save)
+        self.assertIn("GetDisplayName(SIGDN_FILESYSPATH", save)
+        self.assertIn("return select_save_vista(winitial_dir, m_wdefault_path.substr(separator + 1)", source)
+
     def test_resource_arguments_and_target_validation(self):
         with tempfile.TemporaryDirectory(prefix="neutralino-save-") as folder:
             root = Path(folder)
