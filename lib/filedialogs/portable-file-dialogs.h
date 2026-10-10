@@ -44,6 +44,7 @@
 #include <sys/wait.h> // waitpid()
 #endif
 
+#include <algorithm>
 #include <string>   // std::string
 #include <memory>   // std::shared_ptr
 #include <iostream> // std::ostream
@@ -1062,6 +1063,7 @@ inline internal::file_dialog::file_dialog(type in_type,
             if (!ofn.lpstrInitialDir && separator != std::wstring::npos)
             {
                 winitial_dir = m_wdefault_path.substr(0, separator + 1);
+                std::replace(winitial_dir.begin(), winitial_dir.end(), L'/', L'\\');
                 auto parent_attr = GetFileAttributesW(winitial_dir.c_str());
                 if (parent_attr != INVALID_FILE_ATTRIBUTES && (parent_attr & FILE_ATTRIBUTE_DIRECTORY))
                 {

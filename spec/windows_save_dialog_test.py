@@ -5,6 +5,7 @@ import re
 import subprocess
 import tempfile
 import unittest
+import uuid
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,6 +44,7 @@ class WindowsSaveDialogTests(unittest.TestCase):
         end = source.index("inline std::string internal::file_dialog::select_folder_vista(", start)
         save = source[start:end]
         self.assertIn("CLSID_FileSaveDialog", save)
+        self.assertLess(source.index("std::replace(winitial_dir.begin()"), source.index("return select_save_vista(winitial_dir,"))
         self.assertLess(save.index("ifd->SetFolder(folder)"), save.index("ifd->Show(GetForegroundWindow())"))
         self.assertNotIn("SetDefaultFolder", save)
         self.assertIn("ifd->SetFileName(filename.c_str())", save)
@@ -52,6 +54,52 @@ class WindowsSaveDialogTests(unittest.TestCase):
         self.assertIn("if (FAILED(ifd->Show(GetForegroundWindow())))\n        return \"\";", save)
         self.assertIn("GetDisplayName(SIGDN_FILESYSPATH", save)
         self.assertIn("return select_save_vista(winitial_dir, m_wdefault_path.substr(separator + 1)", source)
+        self.assertIn("std::replace(winitial_dir.begin(), winitial_dir.end(), L'/', L'\\\\');", source)
+
+    def test_existing_directory_shell_parsing(self):
+        ole32 = ctypes.WinDLL("ole32")
+        ole32.CoInitializeEx.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        ole32.CoInitializeEx.restype = ctypes.c_long
+        ole32.CoUninitialize.argtypes = []
+        ole32.CoUninitialize.restype = None
+        ole32.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+        ole32.CoTaskMemFree.restype = None
+        shell32 = ctypes.WinDLL("shell32")
+        shell32.SHCreateItemFromParsingName.argtypes = [
+            ctypes.c_wchar_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p),
+        ]
+        shell32.SHCreateItemFromParsingName.restype = ctypes.c_long
+        iid = (ctypes.c_ubyte * 16).from_buffer_copy(uuid.UUID("43826d1e-e718-42ee-bc55-a1e261c37bfe").bytes_le)
+        self.assertIn(ole32.CoInitializeEx(None, 2), (0, 1))
+        try:
+            with tempfile.TemporaryDirectory(prefix="neutralino-save-shell-") as folder:
+                existing = Path(folder) / "流程 解析"
+                existing.mkdir()
+                native = str(existing) + os.sep
+                inputs = (native, native.replace(os.sep, "/"), native.replace(os.sep, "/", 2))
+                for path in inputs:
+                    with self.subTest(path=path):
+                        normalized = path.replace("/", os.sep)
+                        self.assertEqual(normalized, native)
+                        item = ctypes.c_void_p()
+                        self.assertEqual(shell32.SHCreateItemFromParsingName(normalized, None, iid, ctypes.byref(item)), 0)
+                        self.assertTrue(item.value)
+                        table = ctypes.cast(item, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+                        release = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)(table[2])
+                        get_name = ctypes.WINFUNCTYPE(
+                            ctypes.c_long, ctypes.c_void_p, ctypes.c_uint32, ctypes.POINTER(ctypes.c_void_p),
+                        )(table[5])
+                        name = ctypes.c_void_p()
+                        try:
+                            self.assertEqual(get_name(item, 0x80058000, ctypes.byref(name)), 0)
+                            self.assertTrue(name.value)
+                            self.assertTrue(Path(ctypes.wstring_at(name.value)).samefile(existing))
+                        finally:
+                            if name.value:
+                                ole32.CoTaskMemFree(name)
+                            release(item)
+        finally:
+            ole32.CoUninitialize()
 
     def test_resource_arguments_and_target_validation(self):
         with tempfile.TemporaryDirectory(prefix="neutralino-save-") as folder:
