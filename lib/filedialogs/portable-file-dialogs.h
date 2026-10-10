@@ -1054,6 +1054,17 @@ inline internal::file_dialog::file_dialog(type in_type,
 
         if (in_type == type::save)
         {
+            std::wstring winitial_dir;
+            auto separator = m_wdefault_path.find_last_of(L"\\/");
+            if (!ofn.lpstrInitialDir && separator != std::wstring::npos)
+            {
+                winitial_dir = m_wdefault_path.substr(0, separator + 1);
+                auto parent_attr = GetFileAttributesW(winitial_dir.c_str());
+                if (parent_attr != INVALID_FILE_ATTRIBUTES && (parent_attr & FILE_ATTRIBUTE_DIRECTORY))
+                    // Windows 会优先使用历史目录，保存新文件时需显式传入有效父目录。
+                    ofn.lpstrInitialDir = winitial_dir.c_str();
+            }
+
             if (!(options & opt::force_overwrite))
                 ofn.Flags |= OFN_OVERWRITEPROMPT;
 
