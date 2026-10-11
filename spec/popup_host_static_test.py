@@ -50,24 +50,22 @@ class PopupHostStaticTests(unittest.TestCase):
         ):
             self.assertIn(operation, HEADER)
 
-    def test_test_only_resource_route_reuses_generation(self):
-        self.assertTrue(SCRIPT.startswith('if /i "%~1"=="--test-output" goto testOutput'))
-        legacy, route = SCRIPT.split("\n:testOutput\n", 1)
-        route, generation = route.split("\n:buildTest\n", 1)
-        self.assertEqual(len(re.findall(r"^cp ", legacy, re.MULTILINE)), 4)
-        self.assertIn("pause\nexit /b", legacy)
-        for section in (legacy, route):
-            self.assertIn("call :buildTest\nif errorlevel 1", section)
-        self.assertIn('for %%I in ("%~2") do set "testOutput=%%~fI"', route)
-        self.assertIn('if not exist "%testOutput%\\." exit /b 2', route)
-        self.assertIn('pushd "%~dp0" || exit /b 1', route)
-        self.assertIn('copy /y "dist\\DLCV Test-win_x64.exe" "%testOutput%\\neutralino-win_x64.exe"', route)
-        self.assertNotIn("..\\", route)
-        self.assertEqual(generation.count("ResourceHacker.exe"), 3)
-        for other_app in ("env.", "train.", "studio."):
-            self.assertNotIn(other_app, generation)
-        self.assertEqual(generation.count("if errorlevel 1 exit /b 1"), 2)
-        self.assertIn("exit /b %errorlevel%", generation)
+    def test_test_only_resource_route_preserves_original_commands(self):
+        self.assertEqual(SCRIPT.count("ResourceHacker.exe"), 12)
+        self.assertEqual(len(re.findall(r"^cp ", SCRIPT, re.MULTILINE)), 4)
+        self.assertNotIn("call :buildTest", SCRIPT)
+        self.assertTrue(SCRIPT.rstrip().endswith("pause"))
+        icon = SCRIPT.split("\n:testIcon\n", 1)[1].split("\n:testVersion\n", 1)[0]
+        version = SCRIPT.split("\n:testVersion\n", 1)[1]
+        self.assertIn('goto testIcon', SCRIPT)
+        self.assertIn('goto testVersion', icon)
+        self.assertIn('if not exist "%~f2\\." exit /b 2', SCRIPT)
+        self.assertIn('-res "dist/test.ico" -mask ICONGROUP,MAINICON,0', icon)
+        self.assertIn('-open dist/test.rc -save dist/test.res -action compile', version)
+        self.assertIn('-open "dist/DLCV Test-win_x64.exe" -save "dist/DLCV Test-win_x64.exe" ^', version)
+        self.assertIn('-res "dist/test.res" -mask VERSIONINFO', version)
+        self.assertIn('copy /y "dist\\DLCV Test-win_x64.exe" "%~f2\\neutralino-win_x64.exe" > nul || exit /b 1', version)
+        self.assertLess(version.index('exit /b 0'), version.index('dist/studio.rc'))
 
     @unittest.skipUnless(os.name == "nt", "参数校验需要 Windows CMD")
     def test_invalid_arguments_exit_before_resource_generation(self):
