@@ -27,7 +27,7 @@ class popup_window : public std::enable_shared_from_this<popup_window> {
         auto popup = *holder;
         switch (message) {
         case WM_SIZE:
-            if (popup->controller_) {
+            if (wparam != SIZE_MINIMIZED && popup->controller_) {
                 RECT bounds;
                 GetClientRect(window, &bounds);
                 popup->controller_->put_Bounds(bounds);
@@ -75,6 +75,21 @@ class popup_window : public std::enable_shared_from_this<popup_window> {
         controller_->put_Bounds(bounds);
         std::weak_ptr<popup_window> weak = shared_from_this();
         EventRegistrationToken token;
+        view_->add_WebMessageReceived(Microsoft::WRL::Callback<ICoreWebView2WebMessageReceivedEventHandler>(
+            [weak](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
+                LPWSTR message = nullptr;
+                const bool received = SUCCEEDED(args->TryGetWebMessageAsString(&message));
+                const bool focus = received && message && std::wstring(message) == L"neutralino-popup:focus";
+                CoTaskMemFree(message);
+                if (!focus) return S_OK;
+                auto popup = weak.lock();
+                if (!popup || !IsWindow(popup->window_)) return S_OK;
+                if (IsIconic(popup->window_)) ShowWindow(popup->window_, SW_RESTORE);
+                SetForegroundWindow(popup->window_);
+                if (popup->controller_)
+                    popup->controller_->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+                return S_OK;
+            }).Get(), &token);
         view_->add_DocumentTitleChanged(Microsoft::WRL::Callback<ICoreWebView2DocumentTitleChangedEventHandler>(
             [weak](ICoreWebView2* sender, IUnknown*) -> HRESULT {
                 if (auto popup = weak.lock()) {
@@ -137,12 +152,12 @@ public:
                 const auto dpi = GetDpiForWindow(owner);
                 RECT rect = {0, 0, MulDiv(static_cast<int>(std::clamp(width, 200u, 8192u)), dpi, 96),
                     MulDiv(static_cast<int>(std::clamp(height, 150u, 8192u)), dpi, 96)};
-                AdjustWindowRectExForDpi(&rect, WS_OVERLAPPEDWINDOW, FALSE, 0, dpi);
+                AdjustWindowRectExForDpi(&rect, WS_OVERLAPPEDWINDOW, FALSE, WS_EX_APPWINDOW, dpi);
                 auto popup = std::make_shared<popup_window>();
                 auto holder = new std::shared_ptr<popup_window>(popup);
-                HWND window = CreateWindowExW(0, MAKEINTATOM(window_class), L"", WS_OVERLAPPEDWINDOW,
+                HWND window = CreateWindowExW(WS_EX_APPWINDOW, MAKEINTATOM(window_class), L"", WS_OVERLAPPEDWINDOW,
                     CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top,
-                    owner, nullptr, GetModuleHandleW(nullptr), holder);
+                    nullptr, nullptr, GetModuleHandleW(nullptr), holder);
                 if (!window) { if (!popup->attached_) delete holder; deferral->Complete(); return E_FAIL; }
                 SendMessageW(window, WM_SETICON, ICON_SMALL, SendMessageW(owner, WM_GETICON, ICON_SMALL, 0));
                 SendMessageW(window, WM_SETICON, ICON_BIG, SendMessageW(owner, WM_GETICON, ICON_BIG, 0));
