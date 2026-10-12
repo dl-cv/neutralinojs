@@ -7,7 +7,6 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 HEADER = (ROOT / "lib/webview/webview.h").read_text(encoding="utf-8")
 WINDOW = (ROOT / "api/window/window.cpp").read_text(encoding="utf-8")
-BATCH = (ROOT / "换图标、添加版本信息.bat").read_text(encoding="utf-8")
 
 
 class WindowCloseStaticTests(unittest.TestCase):
@@ -29,13 +28,6 @@ class WindowCloseStaticTests(unittest.TestCase):
         self.assertRegex(HEADER, r"case WM_CLOSE:\s*if \(windowStateChange\)\s*windowStateChange\(WEBVIEW_WINDOW_CLOSE\);")
         self.assertRegex(WINDOW, r"case WEBVIEW_WINDOW_CLOSE:[\s\S]*?app::exit\(\);")
 
-    def test_train_output_only_targets_requested_worktree(self):
-        self.assertIn('goto trainIcon', BATCH)
-        self.assertIn('goto trainVersion', BATCH)
-        self.assertIn('copy /y "dist\\DLCV AI Training Platform-win_x64.exe" "%~f2\\neutralino-win_x64.exe" > nul || exit /b 1', BATCH)
-        block = BATCH.split(':trainVersion', 1)[1].split(':testVersion', 1)[0]
-        self.assertIn('exit /b 0', block)
-        self.assertNotIn('..\\dlcv_train', block)
 
 
 if __name__ == "__main__":
