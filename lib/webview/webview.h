@@ -1065,6 +1065,12 @@ namespace webview {
             return (void*)m_window;
         }
         void terminate(int exitCode = 0) {
+            processExitCode = exitCode;
+            // 系统关闭回调在窗口线程执行，不能等待该线程处理排队的销毁操作。
+            if (GetCurrentThreadId() == m_main_thread) {
+                DestroyWindow(m_window);
+                return;
+            }
 
             // event to wait for window close completion
             auto evtWindowClosed = CreateEvent(
@@ -1073,8 +1079,6 @@ namespace webview {
                 FALSE,              // initial state is nonsignaled
                 TEXT("WindowClosedEvent")  // object name
             );
-            processExitCode = exitCode;
-
             dispatch([=]() {
                 DestroyWindow(m_window);
                 SetEvent(evtWindowClosed);
