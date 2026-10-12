@@ -4,6 +4,12 @@ if /i "%~1"=="--platform-output" (
     if not exist "%~f2\." exit /b 2
     goto platformIcon
 )
+if /i "%~1"=="--train-output" (
+    if "%~2"=="" exit /b 2
+    if not "%~3"=="" exit /b 2
+    if not exist "%~f2\." exit /b 2
+    goto trainIcon
+)
 if /i "%~1"=="--test-output" (
     if "%~2"=="" exit /b 2
     if not "%~3"=="" exit /b 2
@@ -18,8 +24,11 @@ if not "%~1"=="" exit /b 2
 if /i "%~1"=="--platform-output" if errorlevel 1 exit /b 1
 if /i "%~1"=="--platform-output" goto platformVersion
 
+:trainIcon
 "C:\Program Files (x86)\Resource Hacker\ResourceHacker.exe" -open "bin/neutralino-win_x64.exe" -save "dist/DLCV AI Training Platform-win_x64.exe" ^
 -action addoverwrite -res "dist/train.ico" -mask ICONGROUP,MAINICON,0
+if /i "%~1"=="--train-output" if errorlevel 1 exit /b 1
+if /i "%~1"=="--train-output" goto trainVersion
 
 :testIcon
 "C:\Program Files (x86)\Resource Hacker\ResourceHacker.exe" -open "bin/neutralino-win_x64.exe" -save "dist/DLCV Test-win_x64.exe" ^
@@ -41,9 +50,17 @@ if /i "%~1"=="--platform-output" (
     exit /b 0
 )
 
+:trainVersion
 "C:\Program Files (x86)\Resource Hacker\ResourceHacker.exe" -open dist/train.rc -save dist/train.res -action compile -log console
+if /i "%~1"=="--train-output" if errorlevel 1 exit /b 1
 "C:\Program Files (x86)\Resource Hacker\ResourceHacker.exe" -open "dist/DLCV AI Training Platform-win_x64.exe" -save "dist/DLCV AI Training Platform-win_x64.exe" ^
 -action addoverwrite -res "dist/train.res" -mask VERSIONINFO
+if /i "%~1"=="--train-output" (
+    if errorlevel 1 exit /b 1
+    copy /y "dist\DLCV AI Training Platform-win_x64.exe" "%~f2\neutralino-win_x64.exe" > nul || exit /b 1
+    exit /b 0
+)
+
 
 :testVersion
 "C:\Program Files (x86)\Resource Hacker\ResourceHacker.exe" -open dist/test.rc -save dist/test.res -action compile -log console
