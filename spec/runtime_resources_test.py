@@ -1,75 +1,51 @@
-"""资源生成检查单独运行，不由编译或资源脚本调用。"""
+"""资源脚本完整性检查单独运行，不由编译或资源脚本调用。"""
 
-from contextlib import redirect_stderr
-import io
-import os
 from pathlib import Path
-import subprocess
-import tempfile
 import unittest
-from unittest.mock import patch
-
-from scripts import runtime_resources as resources
 
 
 ROOT = Path(__file__).resolve().parents[1]
+BATCH = (ROOT / "换图标、添加版本信息.bat").read_text(encoding="utf-8")
+COMMANDS = BATCH.replace("^\n", "").splitlines()
+RESOURCE_HACKER = r'"C:\Program Files (x86)\Resource Hacker\ResourceHacker.exe"'
 
 
 class RuntimeResourcesTests(unittest.TestCase):
-    def test_batch_only_runs_production_generator(self):
-        lines = (ROOT / "换图标、添加版本信息.bat").read_text(encoding="utf-8").splitlines()
-        self.assertEqual(lines, ["@echo off", 'python "%~dp0scripts\\runtime_resources.py" %*', "exit /b %errorlevel%"])
-        source = (ROOT / "scripts/runtime_resources.py").read_text(encoding="utf-8")
-        for forbidden in ("unittest", "pytest", "spec/", "static_test", "--test-output"):
-            self.assertNotIn(forbidden, source)
+    def test_batch_keeps_all_resource_and_copy_steps(self):
+        applications = (
+            ("DLCV AI Platform", "ico.ico", "env", r"dlcv_ai_platform\neutralinojs\bin"),
+            ("DLCV AI Training Platform", "dist/train.ico", "train", r"dlcv_train\frontend\bin"),
+            ("DLCV Test", "dist/test.ico", "test", r"dlcv_test\neu\bin"),
+            ("DLCV AI Studio", "ico.ico", "studio", r"ai_studio\neu\bin"),
+        )
+        for app, icon, version, output in applications:
+            with self.subTest(app=app):
+                executable = f"dist/{app}-win_x64.exe"
+                steps = (
+                    f'{RESOURCE_HACKER} -open "bin/neutralino-win_x64.exe" -save "{executable}" -action addoverwrite -res "{icon}" -mask ICONGROUP,MAINICON,0 || exit /b 1',
+                    f"{RESOURCE_HACKER} -open dist/{version}.rc -save dist/{version}.res -action compile -log console || exit /b 1",
+                    f'{RESOURCE_HACKER} -open "{executable}" -save "{executable}" -action addoverwrite -res "dist/{version}.res" -mask VERSIONINFO || exit /b 1',
+                    f'cp "{executable}" "..\\{output}\\neutralino-win_x64.exe" || exit /b 1',
+                )
+                for command in steps:
+                    self.assertEqual(COMMANDS.count(command), 1)
+                positions = [COMMANDS.index(command) for command in steps]
+                self.assertEqual(positions, sorted(positions))
 
-    def test_each_application_generates_its_resources_and_copies_requested_output(self):
-        temporary_root = Path(os.environ["TEMP"]).resolve(strict=True)
-        with tempfile.TemporaryDirectory(prefix="runtime-resource-check-", dir=temporary_root) as name:
-            folder = Path(name).resolve(strict=True)
-            self.assertEqual(folder.parent, temporary_root)
-            (folder / "dist").mkdir()
-            output = folder / "output"
-            output.mkdir()
-            with patch.object(resources, "ROOT", folder), patch.object(resources.subprocess, "run") as run:
-                for app, (executable, icon, version, _) in resources.APPS.items():
-                    with self.subTest(app=app):
-                        run.reset_mock()
-                        (folder / "dist" / executable).write_bytes(b"runtime-fixture")
-                        resources.main(["--app", app, "--output", str(output)])
-                        self.assertEqual(run.call_count, 3)
-                        commands = [call.args[0] for call in run.call_args_list]
-                        self.assertIn(str(folder / icon), commands[0])
-                        self.assertIn(str(folder / "dist" / (version + ".rc")), commands[1])
-                        self.assertIn(str(folder / "dist" / (version + ".res")), commands[2])
-                        self.assertEqual(commands[0][-2:], ["-mask", "ICONGROUP,MAINICON,0"])
-                        self.assertEqual(commands[2][-2:], ["-mask", "VERSIONINFO"])
-                        self.assertTrue(all(call.kwargs["check"] for call in run.call_args_list))
-                        self.assertEqual((output / "neutralino-win_x64.exe").read_bytes(), b"runtime-fixture")
+    def test_production_scripts_do_not_run_tests(self):
+        for name in ("编译.bat", "换图标、添加版本信息.bat"):
+            source = (ROOT / name).read_text(encoding="utf-8").lower()
+            for forbidden in ("unittest", "pytest", "spec/", "spec\\", "_test.py", "--test-output", "--platform-output", "runtime_resources.py"):
+                with self.subTest(script=name, forbidden=forbidden):
+                    self.assertNotIn(forbidden, source)
+        self.assertNotIn("python", BATCH.lower())
 
-    def test_default_outputs_keep_the_existing_product_paths(self):
-        with patch.object(resources.Path, "resolve", lambda path, strict=False: path), patch.object(resources.Path, "is_dir", return_value=True), patch.object(resources, "export_runtime") as export:
-            resources.main([])
-        self.assertEqual(export.call_count, 4)
-        for call in export.call_args_list:
-            app, output = call.args
-            self.assertEqual(output, resources.ROOT.parent / resources.APPS[app][3])
-
-    def test_invalid_arguments_do_not_generate_resources(self):
-        cases = (["--unknown"], ["--app", "missing"], ["--output", os.environ["TEMP"]], ["--app", "test", "--output", str(Path(os.environ["TEMP"]) / "missing-runtime-bin")])
-        for args in cases:
-            with self.subTest(args=args), patch.object(resources, "export_runtime") as export, redirect_stderr(io.StringIO()):
-                with self.assertRaises(SystemExit) as error:
-                    resources.main(args)
-                self.assertEqual(error.exception.code, 2)
-                export.assert_not_called()
-
-    def test_resource_failure_stops_before_copy(self):
-        with patch.object(resources.subprocess, "run", side_effect=subprocess.CalledProcessError(1, "ResourceHacker")) as run, patch.object(resources.shutil, "copy2") as copy:
-            with self.assertRaises(subprocess.CalledProcessError):
-                resources.export_runtime("studio", Path(os.environ["TEMP"]))
-            self.assertEqual(run.call_count, 1)
-            copy.assert_not_called()
+    def test_failed_resource_or_copy_command_stops_batch(self):
+        commands = [line for line in COMMANDS if line.startswith((RESOURCE_HACKER, "cp "))]
+        self.assertEqual(len(commands), 16)
+        for command in commands:
+            self.assertTrue(command.endswith("|| exit /b 1"))
+        self.assertEqual(COMMANDS[-1], "exit /b 0")
 
 
 if __name__ == "__main__":
