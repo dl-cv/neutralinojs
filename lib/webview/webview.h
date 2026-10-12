@@ -766,6 +766,7 @@ namespace webview {
             RECT bounds;
             GetClientRect(wnd, &bounds);
             m_controller->put_Bounds(bounds);
+            m_controller->put_IsVisible(IsWindowVisible(wnd));
         }
 
         void navigate(const std::string url) override {
