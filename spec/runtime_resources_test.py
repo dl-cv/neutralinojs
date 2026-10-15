@@ -1,6 +1,10 @@
 """资源脚本完整性检查单独运行，不由编译或资源脚本调用。"""
 
 from pathlib import Path
+import os
+import re
+import subprocess
+import tempfile
 import unittest
 
 
@@ -41,11 +45,67 @@ class RuntimeResourcesTests(unittest.TestCase):
         self.assertNotIn("python", BATCH.lower())
 
     def test_failed_resource_or_copy_command_stops_batch(self):
-        commands = [line for line in COMMANDS if line.startswith((RESOURCE_HACKER, "cp "))]
-        self.assertEqual(len(commands), 16)
+        commands = [line.strip() for line in COMMANDS if line.strip().startswith((RESOURCE_HACKER, "cp "))]
+        self.assertEqual(len(commands), 17)
         for command in commands:
             self.assertTrue(command.endswith("|| exit /b 1"))
         self.assertEqual(COMMANDS[-1], "exit /b 0")
+
+    def run_test_batch(self, fail_resource=0, fail_copy=0):
+        # 外部工具由小命令替换，只验证批处理分支、参数和退出码。
+        with tempfile.TemporaryDirectory(prefix="runtime-resources-") as directory:
+            root = Path(directory)
+            (root / "dist").mkdir()
+            (root / "dist" / "DLCV Test-win_x64.exe").write_bytes(b"test runtime")
+            target = root / "target runtime.exe"
+            log = root / "calls.txt"
+            for kind in ("resource", "copy"):
+                (root / f"{kind}.cmd").write_text(
+                    f"@echo off\nset /a {kind}_calls+=1 >nul\n"
+                    f'>>"%CALL_LOG%" echo {kind} %*\n'
+                    f'if "%{kind}_calls%"=="%FAIL_{kind.upper()}%" exit /b 1\n'
+                    + ('set "source=%~1"\ncopy /y "%source:/=\\%" "%~2" >nul\nexit /b %errorlevel%\n' if kind == "copy" else "exit /b 0\n"),
+                    encoding="ascii",
+                )
+            source = BATCH.replace(RESOURCE_HACKER, "call resource.cmd")
+            source = re.sub(r"(?m)^(\s*)cp ", r"\1call copy.cmd ", source)
+            script = root / "resources.bat"
+            script.write_text(source, encoding="utf-8")
+            environment = os.environ.copy()
+            environment.update(
+                CALL_LOG=str(log), FAIL_RESOURCE=str(fail_resource), FAIL_COPY=str(fail_copy),
+                resource_calls="0", copy_calls="0", TEMP=str(root), TMP=str(root), TMPDIR=str(root),
+            )
+            result = subprocess.run(
+                'cmd.exe /d /c call resources.bat test "target runtime.exe" < nul',
+                cwd=root, env=environment, capture_output=True, timeout=10,
+            )
+            self.assertTrue(log.exists(), result.stdout + result.stderr)
+            return result, log.read_text().splitlines(), target.read_bytes() if target.exists() else None
+
+    @unittest.skipUnless(os.name == "nt", "需要 Windows 批处理")
+    def test_test_mode_only_processes_test_runtime_and_target(self):
+        result, calls, copied = self.run_test_batch()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(len(calls), 4)
+        self.assertIn('-res "dist/test.ico"', calls[0])
+        self.assertIn("-open dist/test.rc", calls[1])
+        self.assertIn('-res "dist/test.res"', calls[2])
+        self.assertTrue(calls[3].startswith('copy "dist/DLCV Test-win_x64.exe" '))
+        self.assertTrue(calls[3].endswith('target runtime.exe"'))
+        self.assertEqual(copied, b"test runtime")
+
+    @unittest.skipUnless(os.name == "nt", "需要 Windows 批处理")
+    def test_test_mode_stops_on_each_resource_or_copy_failure(self):
+        for failure in range(1, 5):
+            with self.subTest(step=failure):
+                result, calls, copied = self.run_test_batch(
+                    fail_resource=failure if failure < 4 else 0,
+                    fail_copy=1 if failure == 4 else 0,
+                )
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(len(calls), failure)
+                self.assertIsNone(copied)
 
 
 if __name__ == "__main__":

@@ -864,9 +864,15 @@ namespace webview {
             if (window == nullptr)
             {
                 HINSTANCE hInstance = GetModuleHandle(nullptr);
-                HICON icon = (HICON)LoadImage(
-                    hInstance, IDI_APPLICATION, IMAGE_ICON, GetSystemMetrics(SM_CXSMICON),
-                    GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR);
+                // 首次显示前使用资源脚本写入的图标，避免任务栏先缓存空图标。
+                HICON icon = (HICON)LoadImageW(
+                    hInstance, L"MAINICON", IMAGE_ICON, GetSystemMetrics(SM_CXICON),
+                    GetSystemMetrics(SM_CYICON), LR_DEFAULTCOLOR | LR_SHARED);
+                HICON smallIcon = (HICON)LoadImageW(
+                    hInstance, L"MAINICON", IMAGE_ICON, GetSystemMetrics(SM_CXSMICON),
+                    GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR | LR_SHARED);
+                if (!icon) icon = LoadIconW(nullptr, IDI_APPLICATION);
+                if (!smallIcon) smallIcon = icon;
 
                 WNDCLASSEX wc;
                 ZeroMemory(&wc, sizeof(WNDCLASSEX));
@@ -874,7 +880,7 @@ namespace webview {
                 wc.hInstance = hInstance;
                 wc.lpszClassName = L"Neutralinojs_webview";
                 wc.hIcon = icon;
-                wc.hIconSm = icon;
+                wc.hIconSm = smallIcon;
                 wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
                 wc.lpfnWndProc =
                     (WNDPROC)(+[](HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) -> int {
