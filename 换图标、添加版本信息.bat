@@ -1,5 +1,4 @@
 @echo off
-
 "C:\Program Files (x86)\Resource Hacker\ResourceHacker.exe" -open "bin/neutralino-win_x64.exe" -save "dist/DLCV AI Platform-win_x64.exe" ^
 -action addoverwrite -res "ico.ico" -mask ICONGROUP,MAINICON,0 || exit /b 1
 
