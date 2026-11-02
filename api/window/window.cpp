@@ -404,8 +404,15 @@ namespace window {
 #endif
     }
 
-    void setIcon(const string& iconFile) {
+    errors::StatusCode setIcon(const string& iconFile) {
+#if defined(_WIN32)
+        fs::FileReaderResult fileReaderResult = filesystem::path(CONVSTR(iconFile)).is_absolute()
+            ? fs::readFile(iconFile) : resources::getFile(iconFile);
+        if (fileReaderResult.status != errors::NE_ST_OK)
+            return fileReaderResult.status;
+#else
         fs::FileReaderResult fileReaderResult = resources::getFile(iconFile);
+#endif
         string iconDataStr = fileReaderResult.data;
 #if defined(__linux__) || defined(__FreeBSD__)
         GdkPixbuf* icon = nullptr;
@@ -434,22 +441,66 @@ namespace window {
             "setApplicationIconImage:"_sel, icon);
 
 #elif defined(_WIN32)
+        IStream* pStream = SHCreateMemStream(reinterpret_cast<const BYTE*>(iconDataStr.data()),
+            iconDataStr.length());
+        if (!pStream)
+            return errors::NE_WI_ICONERR;
+
         GdiplusStartupInput gdiplusStartupInput;
         ULONG_PTR gdiplusToken;
-        GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+        if (GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL) != Gdiplus::Ok) {
+            pStream->Release();
+            return errors::NE_WI_ICONERR;
+        }
 
         HICON icon = nullptr;
-        const char* iconData = iconDataStr.c_str();
-        unsigned char* uiconData = reinterpret_cast<unsigned char*>(const_cast<char*>(iconData));
-        IStream* pStream = SHCreateMemStream((BYTE*)uiconData, iconDataStr.length());
-        Gdiplus::Bitmap* bitmap = Gdiplus::Bitmap::FromStream(pStream);
-        bitmap->GetHICON(&icon);
+        Gdiplus::Status status;
+        {
+            Gdiplus::Bitmap bitmap(pStream);
+            status = bitmap.GetLastStatus();
+            if (status == Gdiplus::Ok)
+                status = bitmap.GetHICON(&icon);
+        }
         pStream->Release();
-
-        SendMessage(windowHandle, WM_SETICON, ICON_SMALL, (LPARAM)icon);
-        SendMessage(windowHandle, WM_SETICON, ICON_BIG, (LPARAM)icon);
         GdiplusShutdown(gdiplusToken);
+        if (status != Gdiplus::Ok || !icon) {
+            if (icon)
+                DestroyIcon(icon);
+            return errors::NE_WI_ICONERR;
+        }
+
+        HMODULE user32 = GetModuleHandleW(L"user32.dll");
+        auto getDpi = reinterpret_cast<decltype(&GetDpiForWindow)>(
+            GetProcAddress(user32, "GetDpiForWindow"));
+        auto getMetrics = reinterpret_cast<decltype(&GetSystemMetricsForDpi)>(
+            GetProcAddress(user32, "GetSystemMetricsForDpi"));
+        UINT dpi = getDpi ? getDpi(windowHandle) : 96;
+        auto iconMetric = [getMetrics, dpi](int index) {
+            return getMetrics ? getMetrics(index, dpi) : GetSystemMetrics(index);
+        };
+        int smallWidth = iconMetric(SM_CXSMICON);
+        int smallHeight = iconMetric(SM_CYSMICON);
+        int bigWidth = iconMetric(SM_CXICON);
+        int bigHeight = iconMetric(SM_CYICON);
+        if (!dpi || smallWidth <= 0 || smallHeight <= 0 || bigWidth <= 0 || bigHeight <= 0) {
+            DestroyIcon(icon);
+            return errors::NE_WI_ICONERR;
+        }
+        HICON smallIcon = (HICON)CopyImage(icon, IMAGE_ICON, smallWidth, smallHeight, 0);
+        HICON bigIcon = (HICON)CopyImage(icon, IMAGE_ICON, bigWidth, bigHeight, 0);
+        DestroyIcon(icon);
+        if (!smallIcon || !bigIcon) {
+            if (smallIcon)
+                DestroyIcon(smallIcon);
+            if (bigIcon)
+                DestroyIcon(bigIcon);
+            return errors::NE_WI_ICONERR;
+        }
+
+        SendMessage(windowHandle, WM_SETICON, ICON_SMALL, (LPARAM)smallIcon);
+        SendMessage(windowHandle, WM_SETICON, ICON_BIG, (LPARAM)bigIcon);
 #endif
+        return errors::NE_ST_OK;
     }
 
     void move(int x, int y) {
@@ -614,8 +665,11 @@ namespace window {
             if (windowProps.fullScreen)
                 window::setFullScreen();
 
-            if (windowProps.icon != "")
-                window::setIcon(windowProps.icon);
+            if (windowProps.icon != "") {
+                errors::StatusCode status = window::setIcon(windowProps.icon);
+                if (status != errors::NE_ST_OK)
+                    debug::log(debug::LogTypeError, errors::makeErrorMsg(status, windowProps.icon));
+            }
 
             if (windowProps.alwaysOnTop)
                 window::setAlwaysOnTop(true);
@@ -783,7 +837,11 @@ namespace window {
                 return output;
             }
             string icon = input["icon"].get<string>();
-            window::setIcon(icon);
+            errors::StatusCode status = window::setIcon(icon);
+            if (status != errors::NE_ST_OK) {
+                output["error"] = errors::makeErrorPayload(status, icon);
+                return output;
+            }
             output["success"] = true;
             return output;
         }

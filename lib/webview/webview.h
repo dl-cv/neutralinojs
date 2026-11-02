@@ -581,6 +581,7 @@ namespace webview {
 #include <codecvt>
 #include <stdlib.h>
 #include <windows.h>
+#include <shlobj.h>
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "Shlwapi.lib")
@@ -861,17 +862,22 @@ namespace webview {
     public:
         win32_edge_engine(bool debug, void* window, bool transparent, bool hidden = false)
             : m_hidden(hidden) {
+            setDpi();
             if (window == nullptr)
             {
                 HINSTANCE hInstance = GetModuleHandle(nullptr);
                 // 首次显示前使用资源脚本写入的图标，避免任务栏先缓存空图标。
+                // 共享图标缓存按资源名命中，会把大图标复用于小图标。
                 HICON icon = (HICON)LoadImageW(
                     hInstance, L"MAINICON", IMAGE_ICON, GetSystemMetrics(SM_CXICON),
-                    GetSystemMetrics(SM_CYICON), LR_DEFAULTCOLOR | LR_SHARED);
+                    GetSystemMetrics(SM_CYICON), LR_DEFAULTCOLOR);
                 HICON smallIcon = (HICON)LoadImageW(
                     hInstance, L"MAINICON", IMAGE_ICON, GetSystemMetrics(SM_CXSMICON),
-                    GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR | LR_SHARED);
+                    GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR);
                 if (!icon) icon = LoadIconW(nullptr, IDI_APPLICATION);
+                if (!smallIcon) smallIcon = (HICON)CopyImage(
+                    icon, IMAGE_ICON, GetSystemMetrics(SM_CXSMICON),
+                    GetSystemMetrics(SM_CYSMICON), 0);
                 if (!smallIcon) smallIcon = icon;
 
                 WNDCLASSEX wc;
@@ -1003,12 +1009,17 @@ namespace webview {
                     CW_USEDEFAULT, width, height, nullptr, nullptr,
                     GetModuleHandle(nullptr), nullptr);
                 SetWindowLongPtr(m_window, GWLP_USERDATA, (LONG_PTR)this);
+                // 配置图标需要等待 WebView 初始化，首显先使用已加载的应用图标。
+                SendMessageW(m_window, WM_SETICON, ICON_SMALL, (LPARAM)smallIcon);
+                SendMessageW(m_window, WM_SETICON, ICON_BIG, (LPARAM)icon);
+                wchar_t executable_path[MAX_PATH];
+                DWORD path_length = GetModuleFileNameW(nullptr, executable_path, MAX_PATH);
+                if (path_length > 0 && path_length < MAX_PATH)
+                    SHChangeNotify(SHCNE_UPDATEITEM, SHCNF_PATHW, executable_path, nullptr);
             } else
             {
                 m_window = *(static_cast<HWND*>(window));
             }
-
-            setDpi();
 
             if (transparent)
             {

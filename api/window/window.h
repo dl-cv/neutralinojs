@@ -84,7 +84,7 @@ void hide();
 void setFullScreen();
 void exitFullScreen();
 bool isFullScreen();
-void setIcon(const string &icon);
+errors::StatusCode setIcon(const string &icon);
 void move(int x, int y);
 window::SizeOptions getSize();
 pair<int, int> getPosition();

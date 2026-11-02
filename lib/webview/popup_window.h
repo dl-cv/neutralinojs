@@ -159,8 +159,14 @@ public:
                     CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top,
                     nullptr, nullptr, GetModuleHandleW(nullptr), holder);
                 if (!window) { if (!popup->attached_) delete holder; deferral->Complete(); return E_FAIL; }
-                SendMessageW(window, WM_SETICON, ICON_SMALL, SendMessageW(owner, WM_GETICON, ICON_SMALL, 0));
-                SendMessageW(window, WM_SETICON, ICON_BIG, SendMessageW(owner, WM_GETICON, ICON_BIG, 0));
+                auto small_icon = SendMessageW(owner, WM_GETICON, ICON_SMALL, 0);
+                auto large_icon = SendMessageW(owner, WM_GETICON, ICON_BIG, 0);
+                if (!small_icon) small_icon = GetClassLongPtrW(owner, GCLP_HICONSM);
+                if (!large_icon) large_icon = GetClassLongPtrW(owner, GCLP_HICON);
+                if (!large_icon) large_icon = (LONG_PTR)LoadIconW(nullptr, IDI_APPLICATION);
+                if (!small_icon) small_icon = large_icon;
+                SendMessageW(window, WM_SETICON, ICON_SMALL, small_icon);
+                SendMessageW(window, WM_SETICON, ICON_BIG, large_icon);
                 com_ptr<ICoreWebView2NewWindowRequestedEventArgs> request = args;
                 com_ptr<ICoreWebView2> source_view = sender;
                 HRESULT result = env->CreateCoreWebView2Controller(window,

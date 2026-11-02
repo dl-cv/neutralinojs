@@ -27,9 +27,9 @@
 "C:\Program Files (x86)\Resource Hacker\ResourceHacker.exe" -open "dist/DLCV AI Studio-win_x64.exe" -save "dist/DLCV AI Studio-win_x64.exe" ^
 -action addoverwrite -res "dist/studio.res" -mask VERSIONINFO || exit /b 1
 
-cp "dist/DLCV AI Platform-win_x64.exe" "..\dlcv_ai_platform\neutralinojs\bin\neutralino-win_x64.exe" || exit /b 1
-cp "dist/DLCV AI Studio-win_x64.exe" "..\ai_studio\neu\bin\neutralino-win_x64.exe" || exit /b 1
-cp "dist/DLCV AI Training Platform-win_x64.exe" "..\dlcv_train\frontend\bin\neutralino-win_x64.exe" || exit /b 1
-cp "dist/DLCV Test-win_x64.exe" "..\dlcv_test\neu\bin\neutralino-win_x64.exe" || exit /b 1
+cp "dist/DLCV AI Platform-win_x64.exe" "..\dlcv_ai_platform_1\neutralinojs\bin\neutralino-win_x64.exe" || exit /b 1
+cp "dist/DLCV AI Studio-win_x64.exe" "..\ai_studio_2\neu\bin\neutralino-win_x64.exe" || exit /b 1
+cp "dist/DLCV AI Training Platform-win_x64.exe" "..\dlcv_train_2\frontend\bin\neutralino-win_x64.exe" || exit /b 1
+cp "dist/DLCV Test-win_x64.exe" "..\dlcv_test_5\neu\bin\neutralino-win_x64.exe" || exit /b 1
 
 exit /b 0
