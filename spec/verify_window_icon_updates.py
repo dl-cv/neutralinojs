@@ -134,18 +134,21 @@ def main():
             owner = capture.DWORD()
             capture.USER32.GetWindowThreadProcessId(hwnd, C.byref(owner))
             if (owner.value == pid and win32gui.GetClassName(hwnd) == "Neutralinojs_webview"
-                    and win32gui.GetWindowText(hwnd) == title):
+                    and capture.USER32.IsWindowVisible(hwnd)):
                 windows.append(hwnd)
                 return False
             return True
 
         callback = callback_type(collect)
-        while not windows or not auth_path.is_file():
+        while (not windows or not auth_path.is_file()
+               or win32gui.GetWindowText(windows[0]) != title):
             remaining(deadline)
             if capture.KERNEL32.WaitForSingleObject(process, 0) == capture.WAIT_OBJECT_0:
                 raise RuntimeError("原生运行时在初始化完成前退出")
             if not windows:
                 capture.USER32.EnumDesktopWindows(desktop, callback, 0)
+                if windows:
+                    result["first_visible_icons"] = window_icons(capture, windows[0])
             time.sleep(0.05)
         assert capture.in_job(pid, job), "目标进程不属于本次 Job"
         hwnd = windows[0]
@@ -161,7 +164,8 @@ def main():
         result["initial_icons"] = window_icons(capture, hwnd)
         result["initial_passed"] = all(
             icon["handle"] and icon["size"] == expected_size[kind] and icon["alpha_nonempty"]
-            for kind, icon in result["initial_icons"].items()
+            for stage in ("first_visible_icons", "initial_icons")
+            for kind, icon in result[stage].items()
         )
         auth = json.loads(auth_path.read_text(encoding="utf-8"))
         result["stage"] = "连接原生 API"
