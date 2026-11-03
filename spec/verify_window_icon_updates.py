@@ -97,6 +97,7 @@ def main():
         assert image.format == "PNG", "输入文件必须为 PNG"
         input_size = list(image.size)
         assert image.convert("RGBA").getchannel("A").getbbox(), "输入 PNG 完全透明"
+        image.save(output / "local.ico", format="ICO")
     local_icon, unicode_icon = output / "local.png", output / "中文图标.png"
     shutil.copyfile(source, local_icon)
     unicode_color = (31, 133, 201, 255)
@@ -124,6 +125,8 @@ def main():
             Path(os.environ["SystemRoot"]) / "explorer.exe", [], output, environment, name, job,
         )
         handles.append(explorer)
+        # 独立桌面的 Shell 初始化完成前，WebView2 控制器可能创建失败。
+        time.sleep(10)
         process, pid = capture.start_in_job(runtime, ["--path=."], output, environment, name, job)
         handles.append(process)
         result.update(pid=pid, explorer_pid=explorer_pid)
@@ -144,6 +147,9 @@ def main():
                or win32gui.GetWindowText(windows[0]) != title):
             remaining(deadline)
             if capture.KERNEL32.WaitForSingleObject(process, 0) == capture.WAIT_OBJECT_0:
+                exit_code = capture.DWORD()
+                capture.KERNEL32.GetExitCodeProcess(process, C.byref(exit_code))
+                result["native_exit_code"] = exit_code.value
                 raise RuntimeError("原生运行时在初始化完成前退出")
             if not windows:
                 capture.USER32.EnumDesktopWindows(desktop, callback, 0)
@@ -177,6 +183,7 @@ def main():
             ("包内 PNG", "/icon.png", None),
             ("本地绝对路径 PNG", str(local_icon), None),
             ("中文绝对路径 PNG", str(unicode_icon), None),
+            ("本地绝对路径 ICO", str(output / "local.ico"), None),
             ("缺失本地文件", str(output / "missing.png"), "NE_FS_FILRDER"),
             ("缺失包内资源", "/missing.png", "NE_RS_TREEGER"),
             ("非法 PNG", str(output / "invalid.png"), "NE_WI_ICONERR"),
