@@ -1012,10 +1012,6 @@ namespace webview {
                 // 配置图标需要等待 WebView 初始化，首显先使用已加载的应用图标。
                 SendMessageW(m_window, WM_SETICON, ICON_SMALL, (LPARAM)smallIcon);
                 SendMessageW(m_window, WM_SETICON, ICON_BIG, (LPARAM)icon);
-                wchar_t executable_path[MAX_PATH];
-                DWORD path_length = GetModuleFileNameW(nullptr, executable_path, MAX_PATH);
-                if (path_length > 0 && path_length < MAX_PATH)
-                    SHChangeNotify(SHCNE_UPDATEITEM, SHCNF_PATHW, executable_path, nullptr);
             } else
             {
                 m_window = *(static_cast<HWND*>(window));

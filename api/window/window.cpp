@@ -1,6 +1,7 @@
 #include <string>
 #include <iostream>
 #include <filesystem>
+#include <memory>
 
 #if defined(__linux__) || defined(__FreeBSD__)
 #include <gtk/gtk.h>
@@ -21,7 +22,13 @@
 #include <windows.h>
 #include <gdiplus.h>
 #include <winuser.h>
+#include <shlobj.h>
+#include <shellapi.h>
+#include <shlwapi.h>
+#include <wrl/client.h>
 #pragma comment(lib, "Gdiplus.lib")
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "uuid.lib")
 #pragma comment(lib, "WebView2LoaderStatic.lib")
 #endif
 
@@ -56,6 +63,132 @@ namespace window {
     DWORD savedStyle;
     DWORD savedStyleX;
     RECT savedRect;
+
+    static wstring shortcutPath(const wchar_t* value) {
+        wstring expanded(32768, L'\0');
+        DWORD size = ExpandEnvironmentStringsW(value, expanded.data(), (DWORD)expanded.size());
+        if (!size || size > expanded.size())
+            return L"";
+        expanded.resize(size - 1);
+        wstring full(32768, L'\0');
+        size = GetFullPathNameW(expanded.c_str(), (DWORD)full.size(), full.data(), nullptr);
+        if (!size || size >= full.size())
+            return L"";
+        full.resize(size);
+        return full;
+    }
+
+    static bool hasShortcutIcon(const wstring& path, int index) {
+        HICON largeIcon = nullptr;
+        HICON smallIcon = nullptr;
+        UINT count = ExtractIconExW(path.c_str(), index, &largeIcon, &smallIcon, 1);
+        bool valid = count != 0 && count != static_cast<UINT>(-1) && (largeIcon || smallIcon);
+        if (largeIcon)
+            DestroyIcon(largeIcon);
+        if (smallIcon)
+            DestroyIcon(smallIcon);
+        return valid;
+    }
+
+    static void repairShortcutIcon(const filesystem::path& path, const wstring& executable) {
+        if (_wcsicmp(path.extension().c_str(), L".lnk") != 0)
+            return;
+        Microsoft::WRL::ComPtr<IShellLinkW> link;
+        Microsoft::WRL::ComPtr<IPersistFile> file;
+        if (FAILED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER,
+                IID_PPV_ARGS(link.GetAddressOf()))) || FAILED(link.As(&file)))
+            return;
+        HRESULT loaded = file->Load(path.c_str(), STGM_READ);
+        if (FAILED(loaded)) {
+            debug::log(debug::LogTypeError, "读取任务栏快捷方式失败：" + helpers::wstr2str(path.wstring()) +
+                "，HRESULT=" + to_string(loaded));
+            return;
+        }
+        wstring target(32768, L'\0');
+        if (FAILED(link->GetPath(target.data(), (int)target.size(), nullptr, SLGP_RAWPATH)))
+            return;
+        target = shortcutPath(target.c_str());
+        if (target.empty() || CompareStringOrdinal(target.c_str(), -1,
+                executable.c_str(), -1, TRUE) != CSTR_EQUAL)
+            return;
+        wstring icon(32768, L'\0');
+        int index = 0;
+        if (SUCCEEDED(link->GetIconLocation(icon.data(), (int)icon.size(), &index)) && icon[0]) {
+            wstring iconPath = shortcutPath(icon.c_str());
+            if (PathIsNetworkPathW(filesystem::path(iconPath).root_path().c_str()))
+                return;
+            if (!iconPath.empty() && !hasShortcutIcon(iconPath, index)) {
+                HRESULT updated = link->SetIconLocation(executable.c_str(), 0);
+                if (SUCCEEDED(updated))
+                    updated = file->Save(path.c_str(), TRUE);
+                if (FAILED(updated)) {
+                    debug::log(debug::LogTypeError, "保存任务栏快捷方式图标失败：" + helpers::wstr2str(path.wstring()) +
+                        "，HRESULT=" + to_string(updated));
+                    return;
+                }
+            }
+        }
+        SHChangeNotify(SHCNE_UPDATEITEM, SHCNF_PATHW | SHCNF_FLUSHNOWAIT, path.c_str(), nullptr);
+    }
+
+    static void repairShortcutDirectory(REFKNOWNFOLDERID folder, const wchar_t* child,
+            const wstring& executable) {
+        PWSTR value = nullptr;
+        if (FAILED(SHGetKnownFolderPath(folder, KF_FLAG_DONT_VERIFY, nullptr, &value)))
+            return;
+        unique_ptr<wchar_t, decltype(&CoTaskMemFree)> folderPath(value, CoTaskMemFree);
+        filesystem::path directory(folderPath.get());
+        if (child)
+            directory /= child;
+        error_code error;
+        filesystem::recursive_directory_iterator entry(directory,
+            filesystem::directory_options::skip_permission_denied, error), end;
+        while (!error && entry != end) {
+            DWORD attributes = GetFileAttributesW(entry->path().c_str());
+            if (attributes != INVALID_FILE_ATTRIBUTES && ((attributes & FILE_ATTRIBUTE_REPARSE_POINT) ||
+                    (child && (attributes & FILE_ATTRIBUTE_DIRECTORY)))) {
+                entry.disable_recursion_pending();
+            }
+            else if (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                repairShortcutIcon(entry->path(), executable);
+            }
+            entry.increment(error);
+        }
+    }
+
+    static void repairTaskbarShortcutIcons() {
+        HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        if (FAILED(initialized) && initialized != RPC_E_CHANGED_MODE)
+            return;
+        try {
+            STARTUPINFOW startup = {};
+            startup.cb = sizeof(startup);
+            GetStartupInfoW(&startup);
+            wstring startupLink = ((startup.dwFlags & STARTF_TITLEISLINKNAME) && startup.lpTitle)
+                ? startup.lpTitle : L"";
+            wstring executable(32768, L'\0');
+            DWORD size = GetModuleFileNameW(nullptr, executable.data(), (DWORD)executable.size());
+            if (size && size < executable.size()) {
+                executable.resize(size);
+                executable = shortcutPath(executable.c_str());
+                if (!executable.empty() &&
+                        !PathIsNetworkPathW(filesystem::path(executable).root_path().c_str()) &&
+                        hasShortcutIcon(executable, 0)) {
+                    if (!startupLink.empty())
+                        repairShortcutIcon(startupLink, executable);
+                    repairShortcutDirectory(FOLDERID_UserPinned, L"TaskBar", executable);
+                    repairShortcutDirectory(FOLDERID_ImplicitAppShortcuts, nullptr, executable);
+                    SHChangeNotify(SHCNE_UPDATEITEM, SHCNF_PATHW | SHCNF_FLUSHNOWAIT,
+                        executable.c_str(), nullptr);
+                }
+            }
+        }
+        catch (const exception& error) {
+            debug::log(debug::LogTypeError, string("任务栏快捷方式图标检查失败：") + error.what());
+        }
+        if (SUCCEEDED(initialized))
+            CoUninitialize();
+    }
 #endif
 
     window::WindowOptions windowProps;
@@ -619,6 +752,9 @@ namespace window {
         void __createWindow() {
             savedState = windowProps.useSavedState && __loadSavedWindowProps();
 
+#if defined(_WIN32)
+            repairTaskbarShortcutIcons();
+#endif
             nativeWindow = new webview::webview(windowProps.enableInspector, nullptr, windowProps.transparent, windowProps.hidden);
             nativeWindow->set_title(windowProps.title);
             if (windowProps.extendUserAgentWith != "")
