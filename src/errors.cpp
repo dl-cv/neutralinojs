@@ -41,6 +41,7 @@ string __getStatusCodeString(const errors::StatusCode code) {
         case errors::NE_FS_NOWATID: return "NE_FS_NOWATID";
         // window
         case errors::NE_CF_UNBLWCF: return "NE_CF_UNBLWCF";
+        case errors::NE_WI_ICONERR: return "NE_WI_ICONERR";
         // router
         case errors::NE_RT_INVTOKN: return "NE_RT_INVTOKN";
         case errors::NE_RT_APIPRME: return "NE_RT_APIPRME";
@@ -93,6 +94,7 @@ string __findStatusCodeDesc(errors::StatusCode code) {
         case errors::NE_FS_NOWATID: return "Unable to find watcher: %1";
         // window
         case errors::NE_CF_UNBLWCF: return "Unable to load the window config file: %1";
+        case errors::NE_WI_ICONERR: return "Unable to load window icon: %1";
         // router
         case errors::NE_RT_INVTOKN: return "Invalid or expired NL_TOKEN value from client";
         case errors::NE_RT_APIPRME: return "Missing permission to access Native API";
