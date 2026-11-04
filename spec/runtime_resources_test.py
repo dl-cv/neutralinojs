@@ -13,19 +13,21 @@ RESOURCE_HACKER = r'"C:\Program Files (x86)\Resource Hacker\ResourceHacker.exe"'
 class RuntimeResourcesTests(unittest.TestCase):
     def test_batch_keeps_all_resource_and_copy_steps(self):
         applications = (
-            ("DLCV AI Platform", "ico.ico", "env", r"dlcv_ai_platform\neutralinojs\bin"),
-            ("DLCV AI Training Platform", "dist/train.ico", "train", r"dlcv_train\frontend\bin"),
-            ("DLCV Test", "dist/test.ico", "test", r"dlcv_test\neu\bin"),
-            ("DLCV AI Studio", "ico.ico", "studio", r"ai_studio\neu\bin"),
+            ("DLCV AI Platform", "ico.ico", "env", r"dlcv_ai_platform\neutralinojs\bin", "DLCV_PLATFORM_WORKTREE"),
+            ("DLCV AI Training Platform", "dist/train.ico", "train", r"dlcv_train\frontend\bin", "DLCV_TRAIN_WORKTREE"),
+            ("DLCV Test", "dist/test.ico", "test", r"dlcv_test\neu\bin", "DLCV_TEST_WORKTREE"),
+            ("DLCV AI Studio", "ico.ico", "studio", r"ai_studio\neu\bin", "DLCV_STUDIO_WORKTREE"),
         )
-        for app, icon, version, output in applications:
+        for app, icon, version, output, root_variable in applications:
             with self.subTest(app=app):
                 executable = f"dist/{app}-win_x64.exe"
+                project, relative_output = output.split("\\", 1)
+                self.assertIn(f'if not defined {root_variable} set "{root_variable}=..\\{project}"', COMMANDS)
                 steps = (
                     f'{RESOURCE_HACKER} -open "bin/neutralino-win_x64.exe" -save "{executable}" -action addoverwrite -res "{icon}" -mask ICONGROUP,MAINICON,0 || exit /b 1',
                     f"{RESOURCE_HACKER} -open dist/{version}.rc -save dist/{version}.res -action compile -log console || exit /b 1",
                     f'{RESOURCE_HACKER} -open "{executable}" -save "{executable}" -action addoverwrite -res "dist/{version}.res" -mask VERSIONINFO || exit /b 1',
-                    f'cp "{executable}" "..\\{output}\\neutralino-win_x64.exe" || exit /b 1',
+                    f'cp "{executable}" "%{root_variable}%\\{relative_output}\\neutralino-win_x64.exe" || exit /b 1',
                 )
                 for command in steps:
                     self.assertEqual(COMMANDS.count(command), 1)
