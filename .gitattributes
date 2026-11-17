@@ -1,0 +1,7 @@
+# 手写测试使用 GitHub 差异收起属性，方便优先审阅生产代码。
+spec/** linguist-generated=true
+
+# 微软 SDK 的官方生成文件。
+lib/webview/windows/WebView2.h linguist-generated=true
+lib/webview/windows/WebView2EnvironmentOptions.h linguist-generated=true
+lib/webview/windows/WebView2LoaderStatic.lib linguist-generated=true

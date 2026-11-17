@@ -66,6 +66,19 @@ class popup_window : public std::enable_shared_from_this<popup_window> {
         com_ptr<ICoreWebView2Settings> settings, source_settings;
         view_->get_Settings(&settings);
         source->get_Settings(&source_settings);
+        HRESULT zoom_result = settings->put_IsZoomControlEnabled(FALSE);
+        com_ptr<ICoreWebView2Settings5> pinch_settings;
+        if (SUCCEEDED(zoom_result))
+            zoom_result = settings.As(&pinch_settings);
+        if (SUCCEEDED(zoom_result))
+            zoom_result = pinch_settings->put_IsPinchZoomEnabled(FALSE);
+        if (FAILED(zoom_result)) {
+            char message[128];
+            snprintf(message, sizeof(message), "WebView2 popup page zoom settings failed: HRESULT=0x%08lx\n", zoom_result);
+            OutputDebugStringA(message);
+            DestroyWindow(window_);
+            return;
+        }
         BOOL enabled = FALSE;
         source_settings->get_AreDevToolsEnabled(&enabled);
         settings->put_AreDevToolsEnabled(enabled);
