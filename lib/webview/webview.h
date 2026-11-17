@@ -842,12 +842,20 @@ namespace webview {
             }
             HRESULT STDMETHODCALLTYPE Invoke(HRESULT res,
                 ICoreWebView2Environment* env) {
+                if (FAILED(res) || env == nullptr) {
+                    OutputDebugStringA("WebView2 environment creation failed\n");
+                    ExitProcess(FAILED(res) ? static_cast<UINT>(res) : E_POINTER);
+                }
                 m_environment = env;
                 env->CreateCoreWebView2Controller(m_window, this);
                 return S_OK;
             }
             HRESULT STDMETHODCALLTYPE Invoke(HRESULT res,
                 ICoreWebView2Controller* controller) {
+                if (FAILED(res) || controller == nullptr) {
+                    OutputDebugStringA("WebView2 controller creation failed\n");
+                    ExitProcess(FAILED(res) ? static_cast<UINT>(res) : E_POINTER);
+                }
                 controller->AddRef();
 
                 ICoreWebView2* webview;
