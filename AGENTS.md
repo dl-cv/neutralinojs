@@ -4,5 +4,4 @@
 - 根目录 `换图标、添加版本信息.bat` 保留四款应用的完整图标写入、版本资源编译和运行时复制步骤，不改成其他脚本的入口。
 - 编译和资源脚本禁止执行测试；测试放在 `spec/`，通过 `python -m unittest discover -s spec -p "*_test.py"` 单独运行。
 - 独立工作区构建时，通过 `DLCV_PLATFORM_WORKTREE`、`DLCV_STUDIO_WORKTREE`、`DLCV_TRAIN_WORKTREE`、`DLCV_TEST_WORKTREE` 指定四个复制目标的项目根目录；未设置时使用同级常规项目目录。新增应用时增加图标、版本信息和复制目标。
-- 只分发 AI 平台运行时时，资源脚本传入 `--platform-only`，仅复制 AI 平台产物。
 - WebView2 SDK 由 `python scripts/update_webview2.py` 更新，生成的头文件与 x64 静态加载库取自同一微软 NuGet 包。
