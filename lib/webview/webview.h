@@ -718,6 +718,32 @@ namespace webview {
 
                     ICoreWebView2Settings* m_settings;
                     m_webview->get_Settings(&m_settings);
+                    // 由 WebView2 将 CSS 拖动区域交给系统处理触屏及窗口移动。
+                    ICoreWebView2Settings9* regionSettings = nullptr;
+                    HRESULT regionResult = m_settings->QueryInterface(
+                        __uuidof(ICoreWebView2Settings9), reinterpret_cast<void**>(&regionSettings));
+                    if (SUCCEEDED(regionResult)) {
+                        regionResult = regionSettings->put_IsNonClientRegionSupportEnabled(TRUE);
+                        regionSettings->Release();
+                    }
+                    if (FAILED(regionResult)) {
+                        char message[128];
+                        snprintf(message, sizeof(message), "WebView2 non-client regions unavailable: HRESULT=0x%08lx\n", regionResult);
+                        OutputDebugStringA(message);
+                        nonClientRegionsEnabled = false;
+                        ::EventRegistrationToken closeToken;
+                        HRESULT closeResult = m_webview->add_WindowCloseRequested(
+                            Microsoft::WRL::Callback<ICoreWebView2WindowCloseRequestedEventHandler>(
+                                [](ICoreWebView2*, ::IUnknown*) -> HRESULT {
+                                    PostQuitMessage(1);
+                                    return S_OK;
+                                }).Get(), &closeToken);
+                        if (FAILED(closeResult)) {
+                            OutputDebugStringA("WebView2 update page close handler unavailable\n");
+                            ExitProcess(1);
+                        }
+                        ShowWindow(wnd, SW_SHOW);
+                    }
                     if (debug)
                     {
                         m_settings->put_AreDevToolsEnabled(TRUE);
@@ -727,6 +753,7 @@ namespace webview {
                         m_settings->put_AreDevToolsEnabled(FALSE);
                         m_settings->put_IsStatusBarEnabled(FALSE);
                     }
+                    m_settings->Release();
                     flag.clear();
                     }
                 ));
@@ -770,12 +797,18 @@ namespace webview {
         }
 
         void navigate(const std::string url) override {
+            if (!nonClientRegionsEnabled) {
+                m_webview->NavigateToString(L"<!doctype html><meta charset='utf-8'><body style='font:18px sans-serif;padding:48px;background:#fff;color:#334155'><h2>请更新 WebView2</h2><p>当前 WebView2 无法启用系统窗口拖动。请更新 WebView2 后重新启动。</p><button style='font:inherit;padding:8px 28px' onclick='window.close()'>关闭</button></body>");
+                return;
+            }
             auto wurl = to_lpwstr(url);
             m_webview->Navigate(wurl);
             delete[] wurl;
         }
 
     private:
+        bool nonClientRegionsEnabled = true;
+
         LPWSTR to_lpwstr(const std::string s) {
             int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, NULL, 0);
             wchar_t* ws = new wchar_t[n];
