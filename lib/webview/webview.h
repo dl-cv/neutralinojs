@@ -718,6 +718,16 @@ namespace webview {
 
                     ICoreWebView2Settings* m_settings;
                     m_webview->get_Settings(&m_settings);
+                    // 浏览器整页缩放与业务画布缩放独立，禁止手势改变整个界面视口。
+                    HRESULT zoomResult = m_settings->put_IsZoomControlEnabled(FALSE);
+                    ICoreWebView2Settings5* pinchSettings = nullptr;
+                    if (SUCCEEDED(zoomResult))
+                        zoomResult = m_settings->QueryInterface(
+                            __uuidof(ICoreWebView2Settings5), reinterpret_cast<void**>(&pinchSettings));
+                    if (SUCCEEDED(zoomResult)) {
+                        zoomResult = pinchSettings->put_IsPinchZoomEnabled(FALSE);
+                        pinchSettings->Release();
+                    }
                     // 由 WebView2 将 CSS 拖动区域交给系统处理触屏及窗口移动。
                     ICoreWebView2Settings9* regionSettings = nullptr;
                     HRESULT regionResult = m_settings->QueryInterface(
@@ -726,9 +736,12 @@ namespace webview {
                         regionResult = regionSettings->put_IsNonClientRegionSupportEnabled(TRUE);
                         regionSettings->Release();
                     }
+                    if (FAILED(zoomResult)) {
+                        regionResult = zoomResult;
+                    }
                     if (FAILED(regionResult)) {
                         char message[128];
-                        snprintf(message, sizeof(message), "WebView2 non-client regions unavailable: HRESULT=0x%08lx\n", regionResult);
+                        snprintf(message, sizeof(message), "WebView2 window settings failed: HRESULT=0x%08lx\n", regionResult);
                         OutputDebugStringA(message);
                         nonClientRegionsEnabled = false;
                         ::EventRegistrationToken closeToken;
@@ -798,7 +811,7 @@ namespace webview {
 
         void navigate(const std::string url) override {
             if (!nonClientRegionsEnabled) {
-                m_webview->NavigateToString(L"<!doctype html><meta charset='utf-8'><body style='font:18px sans-serif;padding:48px;background:#fff;color:#334155'><h2>请更新 WebView2</h2><p>当前 WebView2 无法启用系统窗口拖动。请更新 WebView2 后重新启动。</p><button style='font:inherit;padding:8px 28px' onclick='window.close()'>关闭</button></body>");
+                m_webview->NavigateToString(L"<!doctype html><meta charset='utf-8'><body style='font:18px sans-serif;padding:48px;background:#fff;color:#334155'><h2>请更新 WebView2</h2><p>当前 WebView2 无法完成窗口拖动或界面缩放设置。请更新 WebView2 后重新启动。</p><button style='font:inherit;padding:8px 28px' onclick='window.close()'>关闭</button></body>");
                 return;
             }
             auto wurl = to_lpwstr(url);
